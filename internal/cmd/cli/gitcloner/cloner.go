@@ -17,12 +17,14 @@ import (
 	fleetgithub "github.com/rancher/fleet/internal/github"
 	fleetssh "github.com/rancher/fleet/internal/ssh"
 	giturls "github.com/rancher/fleet/pkg/git-urls"
+	"github.com/rancher/fleet/internal/cmd/cli/gitcloner/submodule"
 )
 
 const defaultBranch = "master"
 
 var (
 	plainClone                              = git.PlainClone
+	updateSubmodules 						= submodule.UpdateSubmodules
 	readFile                                = os.ReadFile
 	fileStat                                = os.Stat
 	appAuthGetter fleetgithub.AppAuthGetter = fleetgithub.DefaultAppAuthGetter{}
@@ -79,29 +81,45 @@ func (c *Cloner) CloneRepo(opts *GitCloner) error {
 }
 
 func cloneBranch(opts *GitCloner, auth transport.AuthMethod, caBundle []byte) error {
-	_, err := plainClone(opts.Path, false, &git.CloneOptions{
+	r, err := plainClone(opts.Path, false, &git.CloneOptions{
 		URL:               opts.Repo,
+		Depth: 			   1,
 		Auth:              auth,
 		InsecureSkipTLS:   opts.InsecureSkipTLS,
 		CABundle:          caBundle,
 		SingleBranch:      true,
 		ReferenceName:     plumbing.ReferenceName(opts.Branch),
-		RecurseSubmodules: git.DefaultSubmoduleRecursionDepth,
+		RecurseSubmodules: git.NoRecurseSubmodules,
+		Tags: 			   git.NoTags,
 	})
 
 	if err != nil {
-		return fmt.Errorf("failed to clone repo from branch %s: %w", repo(opts), err)
+		return fmt.Errorf("failed to clone main repo from branch %s: %w, skipping submodule clone", repo(opts), err)
 	}
+
+	submoduleUpdateOptions := &git.SubmoduleUpdateOptions{
+		Init: 			   true,
+		RecurseSubmodules: git.DefaultSubmoduleRecursionDepth,
+		Depth:             1,
+		Auth:              auth,
+	}
+
+	if err := updateSubmodules(r, submoduleUpdateOptions); err != nil {
+		return err
+	}
+
 	return nil
 }
 
 func cloneRevision(opts *GitCloner, auth transport.AuthMethod, caBundle []byte) error {
 	r, err := plainClone(opts.Path, false, &git.CloneOptions{
 		URL:               opts.Repo,
+		Depth: 			   1,
 		Auth:              auth,
 		InsecureSkipTLS:   opts.InsecureSkipTLS,
 		CABundle:          caBundle,
-		RecurseSubmodules: git.DefaultSubmoduleRecursionDepth,
+		RecurseSubmodules: git.NoRecurseSubmodules,
+		Tags: 			   git.NoTags,
 	})
 	if err != nil {
 		return fmt.Errorf("failed to clone repo from revision %s: %w", repo(opts), err)
@@ -117,6 +135,17 @@ func cloneRevision(opts *GitCloner, auth transport.AuthMethod, caBundle []byte) 
 
 	if err := w.Checkout(&git.CheckoutOptions{Hash: *h}); err != nil {
 		return fmt.Errorf("failed to checkout in worktree %s: %w", repo(opts), err)
+	}
+
+	submoduleUpdateOptions := &git.SubmoduleUpdateOptions{
+		Init: 			   true,
+		RecurseSubmodules: git.DefaultSubmoduleRecursionDepth,
+		Depth:             1,
+		Auth:              auth,
+	}
+
+	if err := updateSubmodules(r, submoduleUpdateOptions); err != nil {
+		return err
 	}
 
 	return nil
