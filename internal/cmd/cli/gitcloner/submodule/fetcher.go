@@ -30,6 +30,8 @@ type Fetcher struct {
 	repository *git.Repository
 	remoteName string
 	url string
+	forcedStrategy *capability.StrategyType // Allows bypassing capability detection
+
 }
 
 
@@ -47,6 +49,18 @@ func WithStrategies(s map[capability.StrategyType]Strategy) FetcherOption {
 func WithRemoteName(name string) FetcherOption {
     return func(f *Fetcher) { f.remoteName = name }
 }
+
+// WithForcedStrategy forces the use of a specific strategy,
+// completely bypassing capability detection.
+// Useful for tests where you want to verify the behavior
+// of each strategy against the same server.
+func WithForcedStrategy(st capability.StrategyType) FetcherOption {
+	return func(f *Fetcher) {
+		f.forcedStrategy = &st
+	}
+}
+
+
 
 func NewFetcher(auth transport.AuthMethod, repo *git.Repository, opts ...FetcherOption) (*Fetcher, error) {
     f := &Fetcher{
@@ -83,25 +97,30 @@ func NewFetcher(auth transport.AuthMethod, repo *git.Repository, opts ...Fetcher
 
 
 func (f *Fetcher) Fetch(ctx context.Context, opts *strategy.FetchRequest) error {
+	var strategyType capability.StrategyType
 
-
-	caps, err := f.detector.Detect(f.url, f.Auth)
-	if err != nil {
-		return fmt.Errorf("discovery: %w", err)
+	if f.forcedStrategy != nil {
+		// Bypass detection: use the forced strategy
+		strategyType = *f.forcedStrategy
+	} else {
+		// Normal behavior: detect capabilities and choose strategy
+		caps, err := f.detector.Detect(f.url, f.Auth)
+		if err != nil {
+			return fmt.Errorf("discovery: %w", err)
+		}
+		if caps == nil {
+			caps = &capability.Capabilities{}
+		}
+		strategyType = f.detector.ChooseStrategy(caps)
 	}
-	if caps == nil {
-		caps = &capability.Capabilities{}
-	}
-
-	strategyType := f.detector.ChooseStrategy(caps)
 	st, ok := f.strategies[strategyType]
 	if !ok {
 		return fmt.Errorf("strategy %s not implemented", strategyType)
 	}
 
-	err = st.Execute(ctx,f.repository, opts)
+	err := st.Execute(ctx,f.repository, opts)
 	if err != nil {
-		return fmt.Errorf("Fetch phase: the server didn't honour its capabilties %v : %w", caps, err)
+		return fmt.Errorf("fetch with strategy %s: %w", strategyType, err)
 	}
 
 	return nil
