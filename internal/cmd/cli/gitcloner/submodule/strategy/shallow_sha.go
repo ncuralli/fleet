@@ -24,8 +24,6 @@ func (s *ShallowSHAStrategy) Type() capability.StrategyType {
 
 func (s *ShallowSHAStrategy) Execute(ctx context.Context,r *git.Repository, req *FetchRequest) error {
 
-
-
 	refSpec := config.RefSpec(fmt.Sprintf("%s:refs/heads/temp", req.CommitHash.String()))
 
 	err := r.FetchContext(ctx, &git.FetchOptions{
