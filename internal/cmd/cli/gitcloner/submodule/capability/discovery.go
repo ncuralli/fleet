@@ -21,7 +21,7 @@ const (
 	StrategyShallowSHA StrategyType = iota
 	StrategyFullSHA
 	StrategyIncrementalDeepen
-	StategyFullClone
+	StrategyFullClone
 )
 
 
@@ -29,7 +29,7 @@ func (c *Capabilities) CanFetchBySHA() bool {
 	return c.AllowReachableSHA1InWant
 }
 
-func (c *Capabilities) CanFetchSwallow() bool {
+func (c *Capabilities) CanFetchShallow() bool {
 	return c.Shallow
 }
 
@@ -82,11 +82,11 @@ func capabilitiesFromList(caps *capability.List) *Capabilities {
 // and evaluates the capabilities to decide which strategy should be used
 // for fetching data from the server.
 func (d *CapabilityDetector) ChooseStrategy(caps *Capabilities) StrategyType {
-	if caps.CanFetchBySHA() && caps.CanFetchSwallow() {
+	if caps.CanFetchBySHA() && caps.CanFetchShallow() {
 		return StrategyShallowSHA
 	}
 
-	if caps.CanFetchBySHA() && !caps.CanFetchSwallow() {
+	if caps.CanFetchBySHA() && !caps.CanFetchShallow() {
 		return StrategyFullSHA
 	}
 
@@ -94,7 +94,7 @@ func (d *CapabilityDetector) ChooseStrategy(caps *Capabilities) StrategyType {
 		return StrategyIncrementalDeepen
 	}
 
-	return StategyFullClone
+	return StrategyFullClone
 }
 
 func (st StrategyType) String() string {
@@ -105,8 +105,8 @@ func (st StrategyType) String() string {
 		return "FullSHA"
 	case StrategyIncrementalDeepen:
 		return "StrategyIncrementalDeepen"
-	case StategyFullClone:
-		return "StategyFullClone"
+	case StrategyFullClone:
+		return "StrategyFullClone"
 	default:
 		return "Unknown"
 	}

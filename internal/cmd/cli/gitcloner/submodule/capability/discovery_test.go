@@ -39,12 +39,12 @@ func TestCapabilities_CanFetchBySHA(t *testing.T) {
 
 func TestCapabilities_CanShallow(t *testing.T) {
 	c := Capabilities{Shallow: true}
-	if !c.CanFetchSwallow() {
+	if !c.CanFetchShallow() {
 		t.Error("expected true")
 	}
 
 	c = Capabilities{Shallow: false}
-	if c.CanFetchSwallow() {
+	if c.CanFetchShallow() {
 		t.Error("expected false")
 	}
 }
@@ -130,7 +130,7 @@ func TestChooseStrategy(t *testing.T) {
 		{
 			name:     "full clone - no capabilities",
 			caps:     &Capabilities{},
-			expected: StategyFullClone,
+			expected: StrategyFullClone,
 		},
 	}
 
@@ -153,7 +153,7 @@ func TestStrategyType_String(t *testing.T) {
 		{StrategyShallowSHA, "ShallowSHA"},
 		{StrategyFullSHA, "FullSHA"},
 		{StrategyIncrementalDeepen, "StrategyIncrementalDeepen"},
-		{StategyFullClone, "StategyFullClone"},
+		{StrategyFullClone, "StrategyFullClone"},
 		{StrategyType(99), "Unknown"},
 	}
 

@@ -89,7 +89,7 @@ var expectedObjectCounts = map[capability.StrategyType]int{
 	capability.StrategyIncrementalDeepen: 24,
 
 	// FullClone: entire repository
-	capability.StategyFullClone: 31, // TODO: determine empirically
+	capability.StrategyFullClone: 31, // TODO: determine empirically
 }
 
 // countObjects counts all objects in the repository
@@ -121,7 +121,7 @@ func executeStrategy(t *testing.T, ctx context.Context, repo *git.Repository, st
 		return NewFullSHAStrategy(nil).Execute(ctx, repo, req)
 	case capability.StrategyIncrementalDeepen:
 		return NewIncrementalStrategy(nil).Execute(ctx, repo, req)
-	case capability.StategyFullClone:
+	case capability.StrategyFullClone:
 		return NewFullCloneStrategy(nil).Execute(ctx, repo, req)
 	default:
 		t.Fatalf("unknown strategy type: %v", stratType)

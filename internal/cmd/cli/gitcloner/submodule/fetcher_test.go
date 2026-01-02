@@ -277,7 +277,7 @@ func TestFetch_NilCaps(t *testing.T) {
 
 	mockDetector.EXPECT().
 		ChooseStrategy(gomock.Any()).
-		Return(capability.StategyFullClone)
+		Return(capability.StrategyFullClone)
 
 	mockStrategy.EXPECT().
 		Execute(gomock.Any(), gomock.Any(),gomock.Any()).
@@ -286,7 +286,7 @@ func TestFetch_NilCaps(t *testing.T) {
 	f, err := NewFetcher(nil, r,
 		WithDetector(mockDetector),
 		WithStrategies(map[capability.StrategyType]Strategy{
-			capability.StategyFullClone: mockStrategy,
+			capability.StrategyFullClone: mockStrategy,
 		}),
 	)
 	if err != nil {
@@ -414,7 +414,7 @@ var expectedObjectCounts = map[capability.StrategyType]int{
 	capability.StrategyIncrementalDeepen: 24,
 
 	// FullClone: entire repository
-	capability.StategyFullClone: 31, 
+	capability.StrategyFullClone: 31, 
 }
 
 // countObjects counts all objects in the repository

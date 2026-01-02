@@ -21,7 +21,7 @@ func NewFullCloneStrategy(auth transport.AuthMethod) *FullCloneStrategy {
 }
 
 func (s *FullCloneStrategy) Type() capability.StrategyType {
-	return capability.StategyFullClone
+	return capability.StrategyFullClone
 }
 
 func (s *FullCloneStrategy) Execute(ctx context.Context, r *git.Repository, req *FetchRequest) error {

@@ -88,7 +88,7 @@ func NewFetcher(auth transport.AuthMethod, repo *git.Repository, opts ...Fetcher
             capability.StrategyShallowSHA:        strategy.NewShallowSHAStrategy(auth),
             capability.StrategyFullSHA:           strategy.NewFullSHAStrategy(auth),
             capability.StrategyIncrementalDeepen: strategy.NewIncrementalStrategy(auth),
-            capability.StategyFullClone:          strategy.NewFullCloneStrategy(auth),
+            capability.StrategyFullClone:          strategy.NewFullCloneStrategy(auth),
         }
     }
 
