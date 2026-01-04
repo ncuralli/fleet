@@ -14,10 +14,14 @@ import (
 // This is the fallback strategy when no optimizations are available.
 type FullCloneStrategy struct {
 	auth transport.AuthMethod
+	fetchFunc    FetchFunc
+	checkoutFunc CheckoutFunc
 }
 
 func NewFullCloneStrategy(auth transport.AuthMethod) *FullCloneStrategy {
-	return &FullCloneStrategy{auth: auth}
+	s := &FullCloneStrategy{auth: auth}
+	s.checkoutFunc = defaultCheckout
+	return s
 }
 
 func (s *FullCloneStrategy) Type() capability.StrategyType {
@@ -25,22 +29,28 @@ func (s *FullCloneStrategy) Type() capability.StrategyType {
 }
 
 func (s *FullCloneStrategy) Execute(ctx context.Context, r *git.Repository, req *FetchRequest) error {
-	// Fetch all branches
-	err := r.FetchContext(ctx, &git.FetchOptions{
-		RefSpecs: []config.RefSpec{"refs/heads/*:refs/remotes/origin/*"},
-		Auth:     s.auth,
-		Tags:     git.AllTags,
-	})
+	fetchFunc := s.fetchFunc
+	if fetchFunc == nil {
+		fetchFunc = s.defaultFetch()
+	}
+	err := fetchFunc(ctx, r)
 	if err != nil {
 		return fmt.Errorf("fetch: %w", err)
 	}
 
-	checkoutOpts := &CheckoutOptions{
-		Hash: req.CommitHash,
-	}
-	if err := Checkout(r, checkoutOpts); err != nil {
-		return fmt.Errorf("checkout failed: %w", err)
+	if err := s.checkoutFunc(r, req.CommitHash); err != nil {
+		return err
 	}
 
 	return nil
+}
+
+func (s *FullCloneStrategy) defaultFetch() FetchFunc {
+	return func(ctx context.Context, r *git.Repository) error {
+		return r.FetchContext(ctx, &git.FetchOptions{
+			RefSpecs: []config.RefSpec{"refs/heads/*:refs/remotes/origin/*"},
+			Auth:     s.auth,
+			Tags:     git.AllTags,
+		})
+	}
 }

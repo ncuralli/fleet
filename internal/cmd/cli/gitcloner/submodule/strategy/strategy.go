@@ -12,7 +12,7 @@ type CheckoutOptions struct {
 	//SparsePatterns []string
 }
 
-
+// Checkout performs a git checkout to the specified hash.
 func Checkout(r *git.Repository, opts *CheckoutOptions) error {
 	wt, err := r.Worktree()
 	if err != nil {
@@ -28,4 +28,19 @@ func Checkout(r *git.Repository, opts *CheckoutOptions) error {
 	}
 
 	return nil
+}
+
+// defaultCheckout is the default implementation of CheckoutFunc.
+func defaultCheckout(r *git.Repository, hash plumbing.Hash) error {
+	opts := &CheckoutOptions{Hash: hash}
+	if err := Checkout(r, opts); err != nil {
+		return fmt.Errorf("checkout failed: %w", err)
+	}
+	return nil
+}
+
+// defaultCommitExists is the default implementation of CommitExistsFunc.
+func defaultCommitExists(r *git.Repository, hash plumbing.Hash) bool {
+	_, err := r.CommitObject(hash)
+	return err == nil
 }

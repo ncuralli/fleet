@@ -134,9 +134,6 @@ func executeStrategy(t *testing.T, ctx context.Context, repo *git.Repository, st
 // TestStrategiesWithExpectedCounts verifies that each strategy produces
 // exactly the expected number of objects
 func TestStrategiesWithExpectedCounts(t *testing.T) {
-	if testing.Short() {
-		t.Skip("Skipping integration test in short mode")
-	}
 
 	commitHash := plumbing.NewHash(fixtureCommitSHA)
 	ctx := context.Background()
