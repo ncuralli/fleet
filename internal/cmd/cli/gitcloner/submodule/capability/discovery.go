@@ -4,10 +4,10 @@ import (
 	"fmt"
 	"github.com/go-git/go-git/v5/plumbing/protocol/packp/capability"
 	"github.com/go-git/go-git/v5/plumbing/transport"
-	"github.com/go-git/go-git/v5/plumbing/transport/client"
+	//"github.com/go-git/go-git/v5/plumbing/transport/client"
 )
 
-// Fetch related capabilities from the Git Server
+// Capabilities represents fetch-related capabilities advertised by a Git server.
 type Capabilities struct {
 	AllowReachableSHA1InWant bool
 	AllowTipSHA1InWant       bool
@@ -24,48 +24,53 @@ const (
 	StrategyFullClone
 )
 
-
+// CanFetchBySHA returns true if the server allows fetching by arbitrary SHA.
 func (c *Capabilities) CanFetchBySHA() bool {
 	return c.AllowReachableSHA1InWant
 }
 
+// CanFetchShallow returns true if the server supports shallow clones.
 func (c *Capabilities) CanFetchShallow() bool {
 	return c.Shallow
 }
 
-// CapabilityDetector detect if the server provides capabilities from Capabilities struct
-type CapabilityDetector struct{}
+// CapabilityDetector detects Git server capabilities.
+type CapabilityDetector struct {
+	factory SessionFactory
+}
 
+
+// NewCapabilityDetector creates a new CapabilityDetector with the default session factory.
 func NewCapabilityDetector() *CapabilityDetector {
-	return &CapabilityDetector{}
+	return &CapabilityDetector{
+		factory: NewDefaultSessionFactory(),
+	}
+}
+
+
+// NewCapabilityDetectorWithFactory creates a new CapabilityDetector with a custom session factory.
+func NewCapabilityDetectorWithFactory(factory SessionFactory) *CapabilityDetector {
+	return &CapabilityDetector{
+		factory: factory,
+	}
 }
 
 // Detect ask the server for capabilities and return the supported capabilities
+// Detect queries the Git server at the given URL and returns its capabilities.
 func (d *CapabilityDetector) Detect(url string, auth transport.AuthMethod) (*Capabilities, error) {
-	endpoint, err := transport.NewEndpoint(url)
+	// the session is lazy: go-git return a session without a real connection
+	session, err := d.factory.NewSession(url, auth)
 	if err != nil {
-		return nil, fmt.Errorf("endpoint: %w", err)
+		return nil, fmt.Errorf("create session: %w", err)
 	}
-
-	cli, err := client.NewClient(endpoint)
-	if err != nil {
-		return nil, fmt.Errorf("client: %w", err)
-	}
-
-	session, err := cli.NewUploadPackSession(endpoint, auth)
-	if err != nil {
-		return nil, fmt.Errorf("session: %w", err)
-	}
-
 	defer session.Close()
-
+    // The connection is created only when you start to use the session
 	advRefs, err := session.AdvertisedReferences()
 	if err != nil {
-		return nil, fmt.Errorf("advertised refs: %w", err)
+		return nil, fmt.Errorf("get advertised refs: %w", err)
 	}
 
-	return   capabilitiesFromList(advRefs.Capabilities), nil
-
+	return capabilitiesFromList(advRefs.Capabilities), nil
 }
 
 func capabilitiesFromList(caps *capability.List) *Capabilities {
