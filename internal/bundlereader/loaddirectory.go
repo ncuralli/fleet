@@ -3,8 +3,6 @@ package bundlereader
 import (
 	"bufio"
 	"context"
-	"crypto/tls"
-	"crypto/x509"
 	"encoding/base64"
 	"fmt"
 	"io/fs"
@@ -18,12 +16,13 @@ import (
 	"unicode/utf8"
 
 	"github.com/hashicorp/go-getter/v2"
-	"github.com/rancher/fleet/internal/content"
-	"github.com/rancher/fleet/internal/helmupdater"
-	fleet "github.com/rancher/fleet/pkg/apis/fleet.cattle.io/v1alpha1"
 	"helm.sh/helm/v4/pkg/downloader"
 	helmgetter "helm.sh/helm/v4/pkg/getter"
 	"helm.sh/helm/v4/pkg/registry"
+
+	"github.com/rancher/fleet/internal/content"
+	"github.com/rancher/fleet/internal/helmupdater"
+	fleet "github.com/rancher/fleet/pkg/apis/fleet.cattle.io/v1alpha1"
 )
 
 // ignoreTree represents a tree of ignored paths (read from .fleetignore files), each node being a directory.
@@ -75,7 +74,7 @@ func isAllFilesInDirPattern(path string) bool {
 func (xt *ignoreTree) addNode(dir string) error {
 	toIgnore, err := readFleetIgnore(dir)
 	if err != nil {
-		return fmt.Errorf("read .fleetignore for %s: %v", dir, err)
+		return fmt.Errorf("read .fleetignore for %s: %w", dir, err)
 	}
 
 	if len(toIgnore) == 0 {
@@ -110,9 +109,7 @@ func (xt *ignoreTree) findNode(path string, isDir bool, nodesRoute []*ignoreTree
 
 	for _, c := range xt.children {
 		if steps := c.findNode(path, isDir, nodesRoute); steps != nil {
-			crossed := append(nodesRoute, steps...)
-
-			return crossed
+			return append(nodesRoute, steps...)
 		}
 	}
 
@@ -179,7 +176,7 @@ func loadDirectory(ctx context.Context, opts loadOpts, dir directory) ([]fleet.B
 		if opts.compress || !utf8.Valid(data) {
 			content, err := content.Base64GZ(data)
 			if err != nil {
-				return nil, err
+				return nil, fmt.Errorf("decoding compressed base64 data: %w", err)
 			}
 			r.Content = content
 			r.Encoding = "base64+gz"
@@ -208,10 +205,10 @@ func GetContent(ctx context.Context, base, source, version string, auth Auth, di
 	// go-getter does not support downloading OCI registry based files yet
 	// until this is implemented we use Helm to download charts from OCI based registries
 	// and provide the downloaded file to go-getter locally
-	if hasOCIURL.MatchString(source) {
+	if strings.HasPrefix(source, ociURLPrefix) {
 		source, err = downloadOCIChart(source, version, temp, auth)
 		if err != nil {
-			return nil, err
+			return nil, fmt.Errorf("downloading OCI chart from %q: %w", orgSource, err)
 		}
 	}
 
@@ -254,8 +251,28 @@ func GetContent(ctx context.Context, base, source, version string, auth Auth, di
 		GetMode: getter.ModeDir,
 	}
 
+	if auth.CABundle != nil {
+		file, err := os.CreateTemp("", "cabundle-*")
+		if err != nil {
+			return nil, err
+		}
+		if _, err := file.Write(auth.CABundle); err != nil {
+			return nil, err
+		}
+		file.Close()
+		defer os.Remove(file.Name())
+
+		os.Setenv("GIT_SSL_CAINFO", file.Name())
+		defer os.Unsetenv("GIT_SSL_CAINFO")
+	}
+
+	if auth.InsecureSkipVerify {
+		os.Setenv("GIT_SSL_NO_VERIFY", "true")
+		defer os.Unsetenv("GIT_SSL_NO_VERIFY")
+	}
+
 	if _, err := client.Get(ctx, req); err != nil {
-		return nil, err
+		return nil, fmt.Errorf("retrieving file from %q: %w", source, err)
 	}
 
 	files := map[string][]byte{}
@@ -292,7 +309,7 @@ func GetContent(ctx context.Context, base, source, version string, auth Auth, di
 			// try to update possible dependencies.
 			if !disableDepsUpdate && helmupdater.ChartYAMLExists(path) {
 				if err = helmupdater.UpdateHelmDependencies(path); err != nil {
-					return err
+					return fmt.Errorf("updating helm dependencies: %w", err)
 				}
 			}
 			// Skip .fleetignore'd and hidden directories
@@ -413,7 +430,7 @@ func downloadOCIChart(name, version, path string, auth Auth) (string, error) {
 
 func newHttpGetter(auth Auth) *getter.HttpGetter {
 	httpGetter := &getter.HttpGetter{
-		Client: &http.Client{},
+		Client: getHTTPClient(auth),
 	}
 
 	if auth.Username != "" && auth.Password != "" {
@@ -421,25 +438,6 @@ func newHttpGetter(auth Auth) *getter.HttpGetter {
 		header.Add("Authorization", "Basic "+basicAuth(auth.Username, auth.Password))
 		httpGetter.Header = header
 	}
-
-	transport := http.DefaultTransport.(*http.Transport).Clone()
-	if auth.CABundle != nil {
-		pool, err := x509.SystemCertPool()
-		if err != nil {
-			pool = x509.NewCertPool()
-		}
-		pool.AppendCertsFromPEM(auth.CABundle)
-		transport.TLSClientConfig = &tls.Config{
-			RootCAs:            pool,
-			MinVersion:         tls.VersionTLS12,
-			InsecureSkipVerify: auth.InsecureSkipVerify, // nolint:gosec
-		}
-	} else if auth.InsecureSkipVerify {
-		transport.TLSClientConfig = &tls.Config{
-			InsecureSkipVerify: auth.InsecureSkipVerify, // nolint:gosec
-		}
-	}
-	httpGetter.Client.Transport = transport
 
 	return httpGetter
 }

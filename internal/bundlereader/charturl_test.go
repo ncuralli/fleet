@@ -3,6 +3,7 @@ package bundlereader_test
 
 import (
 	"bytes"
+	"context"
 	"io"
 	"net/http"
 	"strings"
@@ -13,6 +14,8 @@ import (
 	"go.uber.org/mock/gomock"
 
 	"oras.land/oras-go/v2/registry/remote"
+
+	fleet "github.com/rancher/fleet/pkg/apis/fleet.cattle.io/v1alpha1"
 )
 
 func Test_getOCITag(t *testing.T) {
@@ -101,7 +104,7 @@ func Test_getOCITag(t *testing.T) {
 
 			mockCli.EXPECT().Do(gomock.Any()).Return(&resp, nil).MaxTimes(1)
 
-			tag, err := bundlereader.GetOCITag(r, c.inputVersion)
+			tag, err := bundlereader.GetOCITag(context.Background(), r, c.inputVersion)
 
 			if err != nil {
 				if len(c.expectedErrMsg) == 0 || !strings.Contains(err.Error(), c.expectedErrMsg) {
@@ -113,6 +116,46 @@ func Test_getOCITag(t *testing.T) {
 
 			if tag != c.expectedTag {
 				t.Errorf("expected tag %q, got %q", c.expectedTag, tag)
+			}
+		})
+	}
+}
+
+func Test_ChartURL(t *testing.T) {
+	cases := []struct {
+		name     string
+		options  fleet.HelmOptions
+		expected string
+	}{
+		{
+			name: "repo URL with trailing slash",
+			options: fleet.HelmOptions{
+				Chart:   "rancher",
+				Repo:    "https://releases.rancher.com/server-charts/latest/",
+				Version: "2.13.0",
+			},
+			expected: "https://releases.rancher.com/server-charts/latest/rancher-2.13.0.tgz",
+		},
+		{
+			name: "repo URL without trailing slash",
+			options: fleet.HelmOptions{
+				Chart:   "rancher",
+				Repo:    "https://releases.rancher.com/server-charts/latest",
+				Version: "2.13.0",
+			},
+			expected: "https://releases.rancher.com/server-charts/latest/rancher-2.13.0.tgz",
+		},
+	}
+
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			url, err := bundlereader.ChartURL(context.Background(), c.options, bundlereader.Auth{}, false)
+			if err != nil {
+				t.Errorf("expected no error, got %v", err)
+			}
+
+			if url != c.expected {
+				t.Errorf("expected %q, got %q", c.expected, url)
 			}
 		})
 	}

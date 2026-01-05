@@ -31,6 +31,19 @@ const (
 	HTTPSPort = 4343
 )
 
+type gitRepoTestValues struct {
+	Name                   string
+	Repo                   string
+	Branch                 string
+	PollingInterval        string
+	TargetNamespace        string
+	Path                   string
+	CABundle               string
+	HelmSecretName         string
+	HelmSecretNameForPaths string
+	InsecureSkipTLSVerify  bool
+}
+
 var _ = Describe("Monitoring Git repos via HTTP for change", Label("infra-setup"), func() {
 	var (
 		tmpDir           string
@@ -100,18 +113,12 @@ var _ = Describe("Monitoring Git repos via HTTP for change", Label("infra-setup"
 		})
 
 		JustBeforeEach(func() {
-			err := testenv.ApplyTemplate(k, testenv.AssetPath("gitrepo/gitrepo.yaml"), struct {
-				Name            string
-				Repo            string
-				Branch          string
-				PollingInterval string
-				TargetNamespace string
-			}{
-				gitrepoName,
-				inClusterRepoURL,
-				gh.Branch,
-				"15s",           // default
-				targetNamespace, // to avoid conflicts with other tests
+			err := testenv.ApplyTemplate(k, testenv.AssetPath("gitrepo/gitrepo.yaml"), gitRepoTestValues{
+				Name:            gitrepoName,
+				Repo:            inClusterRepoURL,
+				Branch:          gh.Branch,
+				PollingInterval: "15s",           // default
+				TargetNamespace: targetNamespace, // to avoid conflicts with other tests
 			})
 			Expect(err).ToNot(HaveOccurred())
 
@@ -157,18 +164,12 @@ var _ = Describe("Monitoring Git repos via HTTP for change", Label("infra-setup"
 		})
 
 		JustBeforeEach(func() {
-			err := testenv.ApplyTemplate(k, testenv.AssetPath("gitrepo/gitrepo.yaml"), struct {
-				Name            string
-				Repo            string
-				Branch          string
-				PollingInterval string
-				TargetNamespace string
-			}{
-				gitrepoName,
-				inClusterRepoURL,
-				gh.Branch,
-				"15s",           // default
-				targetNamespace, // to avoid conflicts with other tests
+			err := testenv.ApplyTemplate(k, testenv.AssetPath("gitrepo/gitrepo.yaml"), gitRepoTestValues{
+				Name:            gitrepoName,
+				Repo:            inClusterRepoURL,
+				Branch:          gh.Branch,
+				PollingInterval: "15s",           // default
+				TargetNamespace: targetNamespace, // to avoid conflicts with other tests
 			})
 			Expect(err).ToNot(HaveOccurred())
 
@@ -208,6 +209,9 @@ var _ = Describe("Monitoring Git repos via HTTP for change", Label("infra-setup"
 		BeforeEach(func() {
 			localRepoName = "webhook-test"
 			targetNamespace = testenv.NewNamespaceName("target", r)
+
+			gitServerPort = port
+			gitProtocol = "http"
 		})
 
 		JustBeforeEach(func() {
@@ -266,27 +270,29 @@ var _ = Describe("Monitoring Git repos via HTTP for change", Label("infra-setup"
 				return err
 			}).ShouldNot(HaveOccurred(), out)
 
-			// Clone previously created repo
-			clone, err = gh.Create(clonedir, testenv.AssetPath("gitrepo/sleeper-chart"), "examples")
+			// Create the GitRepo resource first, before pushing content
+			// This ensures the webhook will find the GitRepo when the push triggers it
+			err = testenv.ApplyTemplate(k, testenv.AssetPath("gitrepo/gitrepo.yaml"), gitRepoTestValues{
+				Name:            gitrepoName,
+				Repo:            inClusterRepoURL,
+				Branch:          gh.Branch,
+				PollingInterval: "24h",           // prevent polling
+				TargetNamespace: targetNamespace, // to avoid conflicts with other tests
+			})
 			Expect(err).ToNot(HaveOccurred())
 
-			err = testenv.ApplyTemplate(k, testenv.AssetPath("gitrepo/gitrepo.yaml"), struct {
-				Name            string
-				Repo            string
-				Branch          string
-				PollingInterval string
-				TargetNamespace string
-			}{
-				gitrepoName,
-				inClusterRepoURL,
-				gh.Branch,
-				"24h",           // prevent polling
-				targetNamespace, // to avoid conflicts with other tests
-			})
+			// Now push content, which will trigger the webhook
+			clone, err = gh.Create(clonedir, testenv.AssetPath("gitrepo/sleeper-chart"), "examples")
 			Expect(err).ToNot(HaveOccurred())
 		})
 
 		It("updates the deployment", func() {
+			By("waiting for the gitrepo to be ready")
+			Eventually(func(g Gomega) {
+				status := getGitRepoStatus(g, k, gitrepoName)
+				g.Expect(status.Commit).ToNot(BeEmpty(), "GitRepo should have synced initially")
+			}, testenv.MediumTimeout, testenv.ShortTimeout).Should(Succeed())
+
 			By("checking the pod exists")
 			Eventually(func() string {
 				out, _ := k.Namespace(targetNamespace).Get("pods")

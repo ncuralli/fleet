@@ -15,8 +15,23 @@ import (
 
 const (
 	Timeout       = 5 * time.Minute
-	ShortTimeout  = "5s"
-	MediumTimeout = "120s"
+	ShortTimeout  = 5 * time.Second
+	MediumTimeout = 120 * time.Second
+
+	// PodReadyTimeout is the timeout for waiting for pods to become ready in test
+	// infrastructure setup
+	// Set to 180s to accommodate startup probe (160s max: 10s initial delay + (30 failures × 5s period))
+	PodReadyTimeout = 180 * time.Second
+
+	// LongTimeout is an extended timeout for slower CI environments
+	LongTimeout = 10 * time.Minute
+	// VeryLongTimeout is a very long timeout for slower CI environments
+	VeryLongTimeout = 15 * time.Minute
+
+	// PollingInterval is the polling interval for Eventually assertions
+	PollingInterval = 2 * time.Second
+	// LongPollingInterval is a longer polling interval for Eventually assertions
+	LongPollingInterval = 5 * time.Second
 )
 
 type Env struct {
@@ -82,7 +97,7 @@ func (e *Env) Unmarshal(out string, obj interface{}) error {
 // run. e.g. as a targetNamespace for workloads
 func NewNamespaceName(name string, s rand.Source) string {
 	p := make([]byte, 12)
-	r := rand.New(s) // nolint:gosec // non-crypto usage
+	r := rand.New(s)
 	_, err := r.Read(p)
 	if err != nil {
 		panic(err)
@@ -93,7 +108,7 @@ func NewNamespaceName(name string, s rand.Source) string {
 // AddRandomSuffix adds a random suffix to a given name.
 func AddRandomSuffix(name string, s rand.Source) string {
 	p := make([]byte, 6)
-	r := rand.New(s) // nolint:gosec // non-crypto usage
+	r := rand.New(s)
 	_, err := r.Read(p)
 	if err != nil {
 		panic(err)

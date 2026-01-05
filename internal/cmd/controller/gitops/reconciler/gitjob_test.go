@@ -313,7 +313,7 @@ func TestReconcile_Error_WhenSecretDoesNotExist(t *testing.T) {
 	}
 }
 
-func TestNewJob(t *testing.T) { // nolint:funlen
+func TestNewJob(t *testing.T) {
 	securityContext := &corev1.SecurityContext{
 		AllowPrivilegeEscalation: &[]bool{false}[0],
 		ReadOnlyRootFilesystem:   &[]bool{true}[0],
@@ -1618,7 +1618,8 @@ func TestNewJob(t *testing.T) { // nolint:funlen
 
 			// tolerations check
 			// tolerations will be the default ones plus the deployment ones
-			expectedTolerations := append(defaultTolerations, test.deploymentTolerations...)
+			expectedTolerations := append([]corev1.Toleration{}, defaultTolerations...)
+			expectedTolerations = append(expectedTolerations, test.deploymentTolerations...)
 			if !cmp.Equal(expectedTolerations, job.Spec.Template.Spec.Tolerations) {
 				t.Fatalf("job tolerations differ. Expecting: %v and found: %v", test.deploymentTolerations, job.Spec.Template.Spec.Tolerations)
 			}

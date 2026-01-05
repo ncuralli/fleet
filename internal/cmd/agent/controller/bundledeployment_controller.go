@@ -2,6 +2,7 @@ package controller
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strings"
 	"time"
@@ -107,6 +108,8 @@ func (r *BundleDeploymentReconciler) SetupWithManager(mgr ctrl.Manager) error {
 //
 // For more details, check Reconcile and its Result here:
 // - https://pkg.go.dev/sigs.k8s.io/controller-runtime@v0.19.0/pkg/reconcile
+//
+//nolint:gocyclo // refactoring this would make it harder to understand
 func (r *BundleDeploymentReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
 	logger := log.FromContext(ctx).WithName("bundledeployment")
 	ctx = log.IntoContext(ctx, logger)
@@ -167,11 +170,21 @@ func (r *BundleDeploymentReconciler) Reconcile(ctx context.Context, req ctrl.Req
 
 	// helm deploy the bundledeployment
 	if status, err := r.Deployer.DeployBundle(ctx, bd, forceDeploy); err != nil {
-		logger.V(1).Info("Failed to deploy bundle", "status", status, "error", err)
-
 		// do not use the returned status, instead set the condition and possibly a timestamp
 		bd.Status = setCondition(bd.Status, err, monitor.Cond(fleetv1.BundleDeploymentConditionDeployed))
 
+		// Not-ready dependencies should not be treated as an error.
+		// Instead, a controlled requeue should happen until the conditions are met.
+		var notReadyDependenciesError *deployer.NotReadyDependenciesError
+		if errors.As(err, &notReadyDependenciesError) {
+			if err := r.updateStatus(ctx, orig, bd); err != nil {
+				return ctrl.Result{}, err
+			}
+			logger.V(1).Info("Dependencies not ready, requeuing...", "pending", notReadyDependenciesError.Pending)
+			return ctrl.Result{RequeueAfter: durations.WaitForDependenciesReadyRequeueInterval}, nil
+		}
+
+		logger.V(1).Info("Failed to deploy bundle", "status", status, "error", err)
 		merr = append(merr, fmt.Errorf("failed deploying bundle: %w", err))
 	} else {
 		logger.V(1).Info("Bundle deployed", "status", status)
@@ -270,7 +283,8 @@ func (r *BundleDeploymentReconciler) Reconcile(ctx context.Context, req ctrl.Req
 // copyResourcesFromUpstream copies bd's DownstreamResources, from the downstream cluster's namespace on the management
 // cluster to the destination namespace on the downstream cluster, creating that namespace if needed.
 // If bd does not have any DownstreamResources, this method does not issue any API server calls.
-// nolint:dupl // Same pattern between secrets and config map, but different logic.
+//
+//nolint:dupl // Same pattern between secrets and config map, but different logic.
 func (r *BundleDeploymentReconciler) copyResourcesFromUpstream(
 	ctx context.Context,
 	bd *fleetv1.BundleDeployment,
@@ -330,7 +344,7 @@ func (r *BundleDeploymentReconciler) copyResourcesFromUpstream(
 				return nil
 			})
 			if err != nil {
-				return false, fmt.Errorf("failed to create or update secret %s/%s downstream: %v", bd.Namespace, rsc.Name, err)
+				return false, fmt.Errorf("failed to create or update secret %s/%s downstream: %w", bd.Namespace, rsc.Name, err)
 			}
 
 			requiresBDUpdate = op == controllerutil.OperationResultUpdated
@@ -364,7 +378,7 @@ func (r *BundleDeploymentReconciler) copyResourcesFromUpstream(
 				return nil
 			})
 			if err != nil {
-				return false, fmt.Errorf("failed to create or update configmap %s/%s downstream: %v", bd.Namespace, rsc.Name, err)
+				return false, fmt.Errorf("failed to create or update configmap %s/%s downstream: %w", bd.Namespace, rsc.Name, err)
 			}
 
 			requiresBDUpdate = op == controllerutil.OperationResultUpdated

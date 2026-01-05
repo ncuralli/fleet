@@ -69,7 +69,7 @@ func Register(ctx context.Context,
 
 func (h *handler) OnChange(token *fleet.ClusterRegistrationToken, status fleet.ClusterRegistrationTokenStatus) ([]runtime.Object, fleet.ClusterRegistrationTokenStatus, error) {
 	if gone, err := h.deleteExpired(token); err != nil || gone {
-		return nil, status, nil
+		return nil, status, nil //nolint:nilerr // intentionally ignoring error to avoid retry loops on deletion failures
 	}
 
 	logrus.Debugf("Cluster registration token '%s/%s', creating import service account, roles and secret", token.Namespace, token.Name)
@@ -80,18 +80,19 @@ func (h *handler) OnChange(token *fleet.ClusterRegistrationToken, status fleet.C
 	)
 	status.SecretName = ""
 	sa, err := h.serviceAccountCache.Get(token.Namespace, saName)
-	if apierror.IsNotFound(err) {
+	switch {
+	case apierror.IsNotFound(err):
 		logrus.Infof("ClusterRegistrationToken SA does not exist %v", saName)
 		// secret doesn't exist
-	} else if err != nil {
+	case err != nil:
 		return nil, status, err
-	} else if len(sa.Secrets) > 0 {
+	case len(sa.Secrets) > 0:
 		status.SecretName = token.Name
 		secrets, err = h.clusterRegistrationSecret(token, sa.Secrets[0].Name)
 		if err != nil {
 			return nil, status, err
 		}
-	} else if len(sa.Secrets) == 0 {
+	case len(sa.Secrets) == 0:
 		// Kubernetes 1.24 doesn't populate serviceAccount.Secrets:
 		// "This field should not be used to find auto-generated
 		// service account token secrets for use outside of pods."

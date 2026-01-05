@@ -449,8 +449,6 @@ func TestReconcile_OptionsSecretCreateUpdateError(t *testing.T) {
 			mockClient := mocks.NewMockK8sClient(mockCtrl)
 			expectGetWithFinalizer(mockClient, bundle)
 
-			// No content creation/update expected, as options secret management happens before creating the BD
-
 			c.secretCalls(mockClient)
 
 			// No expected status update (retryable error)
@@ -531,8 +529,6 @@ func TestReconcile_OptionsSecretDeletionError(t *testing.T) {
 
 	mockClient := mocks.NewMockK8sClient(mockCtrl)
 	expectGetWithFinalizer(mockClient, bundle)
-
-	// No content creation/update expected, as options secret management happens before creating the BD
 
 	mockClient.EXPECT().Delete(gomock.Any(), gomock.AssignableToTypeOf(&corev1.Secret{}), gomock.Any()).
 		Return(errors.New("something went wrong"))
@@ -794,8 +790,6 @@ func TestReconcile_DownstreamObjectsHandlingError(t *testing.T) {
 			mockClient := mocks.NewMockK8sClient(mockCtrl)
 			expectGetWithFinalizer(mockClient, bundle)
 
-			expectContentCreationAndUpdate(mockClient)
-
 			// Options secret: deletion attempt in case it exists, as the bundle deployment's values hash is empty
 			mockClient.EXPECT().Delete(gomock.Any(), gomock.AssignableToTypeOf(&corev1.Secret{}), gomock.Any()).
 				Return(nil)
@@ -957,6 +951,7 @@ func TestReconcile_AccessSecretsHandlingError(t *testing.T) {
 }
 
 func expectStatusPatch(t *testing.T, sClient *mocks.MockSubResourceWriter, errMsg string) {
+	t.Helper()
 	sClient.EXPECT().Patch(gomock.Any(), gomock.AssignableToTypeOf(&fleetv1.Bundle{}), gomock.Any()).Do(
 		func(ctx context.Context, b *fleetv1.Bundle, p client.Patch, opts ...interface{}) {
 			cond, found := getBundleReadyCondition(b)
@@ -1112,12 +1107,4 @@ func expectGetWithFinalizer(mockCli *mocks.MockK8sClient, bundle fleetv1.Bundle)
 			return nil
 		},
 	)
-}
-
-func expectContentCreationAndUpdate(mockCli *mocks.MockK8sClient) {
-	// Get content and update it, adding a finalizer, from createBundleDeployment
-	mockCli.EXPECT().Get(gomock.Any(), gomock.Any(), gomock.AssignableToTypeOf(&fleetv1.Content{}), gomock.Any()).
-		Return(nil)
-
-	mockCli.EXPECT().Update(gomock.Any(), gomock.AssignableToTypeOf(&fleetv1.Content{}), gomock.Any()).Return(nil)
 }

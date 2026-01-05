@@ -142,13 +142,14 @@ func (a *Apply) run(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("adding auth to opts: %w", err)
 	}
 
-	if a.File == "-" {
+	switch {
+	case a.File == "-":
 		opts.BundleReader = os.Stdin
 		if len(args) != 1 {
 			return fmt.Errorf("the bundle name is required as the first argument")
 		}
 		name = args[0]
-	} else if a.File != "" {
+	case a.File != "":
 		f, err := os.Open(a.File)
 		if err != nil {
 			return err
@@ -159,9 +160,9 @@ func (a *Apply) run(cmd *cobra.Command, args []string) error {
 			return fmt.Errorf("the bundle name is required as the first argument")
 		}
 		name = args[0]
-	} else if len(args) < 1 {
+	case len(args) < 1:
 		return fmt.Errorf("at least one arguments is required BUNDLE_NAME")
-	} else {
+	default:
 		name = args[0]
 		args = args[1:]
 	}
@@ -171,7 +172,7 @@ func (a *Apply) run(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("setting git SSH command env var for known hosts: %w", err)
 	}
 
-	defer restoreEnv() // nolint: errcheck // best-effort
+	defer restoreEnv() //nolint: errcheck // best-effort
 
 	ctx := cmd.Context()
 	cfg := ctrl.GetConfigOrDie()
@@ -241,7 +242,7 @@ func (a *Apply) addAuthToOpts(opts *apply.Options, readFile readFile, helmBasicH
 }
 
 func currentCommit() string {
-	cmd := exec.Command("git", "rev-parse", "HEAD")
+	cmd := exec.Command("git", "rev-parse", "HEAD") //nolint:noctx // TODO: refactor to use go-git's ResolveRevision
 	buf := &bytes.Buffer{}
 	cmd.Stdout = buf
 	err := cmd.Run()

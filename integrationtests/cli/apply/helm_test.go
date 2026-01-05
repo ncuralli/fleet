@@ -102,6 +102,13 @@ var _ = Describe("Fleet apply helm release with HTTP OCI registry", Ordered, fun
 		container, err = startDockerRegistry(context.Background())
 		Expect(err).ToNot(HaveOccurred())
 
+		// Use DeferCleanup to ensure container is terminated even if BeforeAll fails
+		DeferCleanup(func() {
+			if container != nil {
+				Expect(container.Terminate(context.Background())).NotTo(HaveOccurred())
+			}
+		})
+
 		host, err = container.Host(context.Background())
 		Expect(err).ToNot(HaveOccurred())
 
@@ -110,11 +117,11 @@ var _ = Describe("Fleet apply helm release with HTTP OCI registry", Ordered, fun
 
 		cmd := exec.Command("helm", "package", cli.AssetsPath+"config-chart/")
 		out, err := cmd.CombinedOutput()
-		Expect(err).ToNot(HaveOccurred(), out)
+		Expect(err).ToNot(HaveOccurred(), string(out))
 
-		cmd = exec.Command("helm", "push", "config-chart-0.1.0.tgz", fmt.Sprintf("oci://%s:%d", host, port.Int()))
+		cmd = exec.Command("helm", "push", "config-chart-0.1.0.tgz", fmt.Sprintf("oci://%s:%d", host, port.Int()), "--plain-http")
 		out, err = cmd.CombinedOutput()
-		Expect(err).ToNot(HaveOccurred(), out)
+		Expect(err).ToNot(HaveOccurred(), string(out))
 
 		err = createGitRepoDataForTest(tmpDir, host, port.Port(), "config-chart")
 		Expect(err).ToNot(HaveOccurred())
@@ -141,13 +148,9 @@ var _ = Describe("Fleet apply helm release with HTTP OCI registry", Ordered, fun
 		err := fleetApply("helm", []string{relTmpDir}, apply.Options{Auth: bundlereader.Auth{BasicHTTP: true}})
 		Expect(err).ToNot(HaveOccurred())
 	})
-
-	AfterAll(func() {
-		Expect(container.Terminate(context.Background())).NotTo(HaveOccurred())
-	})
 })
 
-// nolint: unparam // port is always 3000, but better store that value in one place for easier maintenance.
+//nolint:unparam // port always receives ":3000" but parameter kept for clarity
 func testHelmRepo(path, port string, applyF applyFunc) {
 	var authEnabled bool
 	var repo = repository{

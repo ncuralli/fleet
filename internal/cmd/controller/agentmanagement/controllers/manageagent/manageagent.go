@@ -11,6 +11,7 @@ import (
 	"crypto/sha256"
 	"encoding/json"
 	"fmt"
+	"sort"
 
 	"github.com/sirupsen/logrus"
 
@@ -33,6 +34,46 @@ import (
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/utils/ptr"
 )
+
+func sortTolerations(tols []corev1.Toleration) {
+	sort.Slice(tols, func(i, j int) bool {
+		a := tols[i]
+		b := tols[j]
+
+		// 1. Key
+		if a.Key != b.Key {
+			return a.Key < b.Key
+		}
+
+		// 2. Value
+		if a.Value != b.Value {
+			return a.Value < b.Value
+		}
+
+		// 3. Operator
+		if a.Operator != b.Operator {
+			return a.Operator < b.Operator
+		}
+
+		// 4. Effect
+		if a.Effect != b.Effect {
+			return a.Effect < b.Effect
+		}
+
+		// 5. TolerationSeconds (nil-safe)
+		if a.TolerationSeconds == nil && b.TolerationSeconds != nil {
+			return true // nil sorts first
+		}
+		if a.TolerationSeconds != nil && b.TolerationSeconds == nil {
+			return false
+		}
+		if a.TolerationSeconds == nil && b.TolerationSeconds == nil {
+			return false
+		}
+
+		return *a.TolerationSeconds < *b.TolerationSeconds
+	})
+}
 
 const (
 	AgentBundleName = "fleet-agent"
@@ -219,6 +260,8 @@ func (h *handler) updateClusterStatus(cluster *fleet.Cluster, status fleet.Clust
 func (h *handler) resolveNS(namespace, _ string, obj runtime.Object) ([]relatedresource.Key, error) {
 	if cluster, ok := obj.(*fleet.Cluster); ok {
 		if _, err := h.bundleCache.Get(namespace, names.SafeConcatName(AgentBundleName, cluster.Name)); err != nil {
+			// Bundle doesn't exist (or can't be retrieved), enqueue the namespace to create/reconcile it
+			//nolint:nilerr // Intentionally ignoring error - "not found" is expected and should trigger reconciliation
 			return []relatedresource.Key{{Name: namespace}}, nil
 		}
 	}
@@ -228,12 +271,14 @@ func (h *handler) resolveNS(namespace, _ string, obj runtime.Object) ([]relatedr
 // OnNamespace updates agent bundles for all clusters in the namespace
 func (h *handler) OnNamespace(key string, namespace *corev1.Namespace) (*corev1.Namespace, error) {
 	if namespace == nil {
+		// Namespace was deleted, nothing to process. This is a normal deletion event.
 		return nil, nil
 	}
 
 	cfg := config.Get()
 	// managed agents are disabled, so we don't need to create the bundle
 	if cfg.ManageAgent != nil && !*cfg.ManageAgent {
+		// Agent management is disabled via configuration. Nothing to do.
 		return nil, nil
 	}
 
@@ -284,6 +329,10 @@ func (h *handler) newAgentBundle(ns string, cluster *fleet.Cluster) (runtime.Obj
 	priorityClassName := ""
 	if cluster.Spec.AgentSchedulingCustomization != nil && cluster.Spec.AgentSchedulingCustomization.PriorityClass != nil {
 		priorityClassName = scheduling.FleetAgentPriorityClassName
+	}
+
+	if cluster.Spec.AgentTolerations != nil {
+		sortTolerations(cluster.Spec.AgentTolerations)
 	}
 
 	// Notice we only set the agentScope when it's a non-default agentNamespace. This is for backwards compatibility

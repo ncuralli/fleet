@@ -40,6 +40,7 @@ type ControllerReconcilerWorkers struct {
 	ClusterGroup     int
 	ImageScan        int
 	Schedule         int
+	Content          int
 }
 
 type BindAddresses struct {
@@ -134,8 +135,16 @@ func (f *FleetController) Run(cmd *cobra.Command, args []string) error {
 		workersOpts.Schedule = w
 	}
 
+	if d := os.Getenv("CONTENT_RECONCILER_WORKERS"); d != "" {
+		w, err := strconv.Atoi(d)
+		if err != nil {
+			setupLog.Error(err, "failed to parse CONTENT_RECONCILER_WORKERS", "value", d)
+		}
+		workersOpts.Content = w
+	}
+
 	go func() {
-		log.Println(http.ListenAndServe("localhost:6060", nil)) // nolint:gosec // Debugging only
+		log.Println(http.ListenAndServe("localhost:6060", nil)) //nolint:gosec // Debugging only
 	}()
 	if err := start(
 		ctx,

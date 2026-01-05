@@ -49,6 +49,15 @@ const (
 	// BenchmarkLabel is set to "true" on clusters that should be included
 	// in the benchmark.
 	BenchmarkLabel = "fleet.cattle.io/benchmark"
+
+	// Timeout constants for benchmark tests
+	ShortTimeout  = 5 * time.Minute
+	MediumTimeout = 10 * time.Minute
+	LongTimeout   = 15 * time.Minute
+
+	// Polling intervals for Eventually assertions
+	PollingInterval     = 2 * time.Second
+	LongPollingInterval = 5 * time.Second
 )
 
 var (
@@ -263,7 +272,7 @@ func generateAsset(target string, tmplPath string, data any) error {
 	if err != nil {
 		return err
 	}
-	err = os.WriteFile(target, []byte(sb.String()), 0644) // nolint:gosec // Non-crypto use
+	err = os.WriteFile(target, []byte(sb.String()), 0644)
 	if err != nil {
 		return err
 	}

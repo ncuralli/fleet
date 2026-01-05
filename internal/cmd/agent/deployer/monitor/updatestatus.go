@@ -100,7 +100,7 @@ func (m *Monitor) UpdateStatus(ctx context.Context, bd *fleet.BundleDeployment, 
 		// When there is no resourceID the error should be on the status. Without
 		// the ID we do not have the information to lookup the resources to
 		// compute the plan and discover the state of resources.
-		if err == helmdeployer.ErrNoResourceID {
+		if errors.Is(err, helmdeployer.ErrNoResourceID) {
 			return origStatus, nil
 		}
 
@@ -256,11 +256,12 @@ func calculateResourceCounts(all []fleet.BundleDeploymentResource, nonReady []fl
 		DesiredReady: calculateDesiredReady(resourceKeys, modified),
 	}
 	for _, r := range modified {
-		if r.Create {
+		switch {
+		case r.Create:
 			counts.Missing++
-		} else if r.Delete {
+		case r.Delete:
 			counts.Orphaned++
-		} else {
+		default:
 			counts.Modified++
 		}
 		delete(resourceKeys, fleet.ResourceKey{

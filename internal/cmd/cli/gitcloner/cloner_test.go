@@ -32,7 +32,7 @@ func TestCloneRepo(t *testing.T) {
 		passwordFile        = "passFile"
 		passwordFileContent = "1234"
 		sshPrivateKeyFile   = "sshFile"
-		//nolint:gosec // it's only test data
+
 		sshPrivateKeyFileContent = `-----BEGIN RSA PRIVATE KEY-----
 MIICXQIBAAKBgQC1ZuFGlFeAFqeS6p04QsliOXG3NH1/lQC4UMXdQ0F73ciYBPKq
 iQZcoyOu8a2Hsi5HvxDqR1rreTAkJ37C3ErrmKcE1CUJwxBVqkgE17Fzw63QBu0X
@@ -271,11 +271,13 @@ udiSlDctMM/X3ZM2JN5M1rtAJ2WR3ZQtmWbOjZAbG2Eq
 		t.Run(name, func(t *testing.T) {
 			c := Cloner{}
 			err := c.CloneRepo(test.opts)
-			if err == nil && test.expectedErr != nil {
-				t.Fatalf("err expected to be [%v], got [%v]", test.expectedErr, err)
-			} else if test.expectedErr != nil && err == nil {
-				t.Fatalf("err expected to be [%v], got [%v]", test.expectedErr, err)
-			} else if test.expectedErr != nil && err != nil {
+			if test.expectedErr == nil && err != nil {
+				t.Fatalf("err unexpected: %v", err)
+			}
+			if test.expectedErr != nil {
+				if err == nil {
+					t.Fatalf("err expected to be [%v], got [%v]", test.expectedErr, err)
+				}
 				if !cmp.Equal(test.expectedErr.Error(), err.Error()) {
 					t.Fatalf("err expected to be [%s], got [%s]", test.expectedErr.Error(), err.Error())
 				}

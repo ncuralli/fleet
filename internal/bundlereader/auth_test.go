@@ -14,7 +14,6 @@ import (
 	"github.com/rancher/fleet/internal/mocks"
 )
 
-// nolint: funlen
 func TestReadHelmAuthFromSecret(t *testing.T) {
 	cases := []struct {
 		name              string
@@ -205,6 +204,75 @@ func TestReadHelmAuthFromSecret(t *testing.T) {
 		if err != nil && c.expectedErrNotNil {
 			assert.Equal(c.expectedError, err.Error())
 		}
-		assert.Equal(auth, c.expectedAuth)
+		assert.Equal(c.expectedAuth, auth)
+	}
+}
+
+func TestAuth_Hash(t *testing.T) {
+	for name, baseAuth := range map[string]bundlereader.Auth{
+		"no fields": {},
+		"all fields": {
+			Username:           "user",
+			Password:           "pass",
+			CABundle:           []byte("ca-data"),
+			SSHPrivateKey:      []byte("ssh-key"),
+			InsecureSkipVerify: true,
+			BasicHTTP:          false,
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			// Test that changing each field individually results in a new hash.
+			testCases := []struct {
+				name          string
+				mod           func(a bundlereader.Auth) bundlereader.Auth
+				auth          bundlereader.Auth
+				baseHash      string
+				expectedEqual bool
+			}{
+				{
+					name:          "No changes",
+					mod:           func(a bundlereader.Auth) bundlereader.Auth { return a },
+					expectedEqual: true,
+				},
+				{
+					name: "Different Username",
+					mod:  func(a bundlereader.Auth) bundlereader.Auth { a.Username = "different-user"; return a },
+				},
+				{
+					name: "Different Password",
+					mod:  func(a bundlereader.Auth) bundlereader.Auth { a.Password = "different-pass"; return a },
+				},
+				{
+					name: "Different CABundle",
+					mod:  func(a bundlereader.Auth) bundlereader.Auth { a.CABundle = []byte("different-ca"); return a },
+				},
+				{
+					name: "Different SSHPrivateKey",
+					mod:  func(a bundlereader.Auth) bundlereader.Auth { a.SSHPrivateKey = []byte("different-key"); return a },
+				},
+				{
+					name: "Different InsecureSkipVerify",
+					mod:  func(a bundlereader.Auth) bundlereader.Auth { a.InsecureSkipVerify = !a.InsecureSkipVerify; return a },
+				},
+				{
+					name: "Different BasicHTTP",
+					mod:  func(a bundlereader.Auth) bundlereader.Auth { a.BasicHTTP = !a.BasicHTTP; return a },
+				},
+			}
+
+			for _, tc := range testCases {
+				t.Run(tc.name, func(t *testing.T) {
+					baseHash := baseAuth.Hash()
+					modifiedAuth := tc.mod(baseAuth)
+					modifiedHash := modifiedAuth.Hash()
+
+					if tc.expectedEqual {
+						assert.Equal(t, modifiedHash, baseHash)
+					} else {
+						assert.NotEqual(t, modifiedHash, baseHash)
+					}
+				})
+			}
+		})
 	}
 }

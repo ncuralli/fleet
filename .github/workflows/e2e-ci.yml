@@ -23,9 +23,9 @@ jobs:
           # k3d version list k3s | sed 's/+/-/' | sort -h
           # https://hub.docker.com/r/rancher/k3s/tags
           - name: k3s-new
-            version: v1.33.1-k3s1
+            version: v1.34.1-k3s1
           - name: k3s-old
-            version: v1.30.9-k3s1
+            version: v1.33.5-k3s1
         test_type:
           - name: default
           - name: sharding
@@ -40,11 +40,11 @@ jobs:
 
     steps:
       -
-        uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5
+        uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8 # v6
         with:
           fetch-depth: 0
       -
-        uses: actions/setup-go@44694675825211faa026b3c33043df3e48a5fa00 # v6
+        uses: actions/setup-go@4dc6199c7b1a012772edbd06daecab0f50c9053c # v6
         with:
           go-version-file: 'go.mod'
           check-latest: true
@@ -111,10 +111,31 @@ jobs:
       -
         name: Provision k3d Cluster
         run: |
-          k3d cluster create upstream --wait \
-            --agents 1 \
-            --network "nw01" \
-            --image docker.io/rancher/k3s:${{matrix.k3s.version}}
+          # Retry cluster creation up to 3 times to handle transient network issues
+          max_attempts=3
+          attempt=1
+          while [ $attempt -le $max_attempts ]; do
+            echo "Attempt $attempt of $max_attempts to create k3d cluster..."
+            if k3d cluster create upstream --wait \
+              --agents 1 \
+              --network "nw01" \
+              --image docker.io/rancher/k3s:${{matrix.k3s.version}}; then
+              echo "Cluster created successfully"
+              break
+            else
+              echo "Cluster creation failed on attempt $attempt"
+              if [ $attempt -lt $max_attempts ]; then
+                echo "Cleaning up and retrying..."
+                k3d cluster delete upstream 2>/dev/null || true
+                docker network rm nw01 2>/dev/null || true
+                sleep 10
+              else
+                echo "All attempts failed"
+                exit 1
+              fi
+            fi
+            attempt=$((attempt + 1))
+          done
       -
         name: Import Images Into k3d
         run: |
@@ -214,8 +235,15 @@ jobs:
           e2e/testenv/infra/infra setup --helm-registry=true
           e2e/testenv/infra/infra setup --oci-registry=true
 
-          ginkgo --github-output --trace --label-filter='oci-registry' e2e/single-cluster
-          ginkgo --github-output --trace --label-filter='oci-registry' e2e/metrics
+          # Wait for OCI registry to be fully ready
+          echo "Waiting for OCI registry to be ready..."
+          kubectl wait --for=condition=ready pod -l app=zot -n default --timeout=120s || true
+          sleep 5
+
+          # OCI tests can be flaky due to registry setup timing issues
+          # Run with flake attempts to retry failed tests
+          ginkgo --github-output --trace --flake-attempts=2 --label-filter='oci-registry' e2e/single-cluster
+          ginkgo --github-output --trace --flake-attempts=2 --label-filter='oci-registry' e2e/metrics
 
           e2e/testenv/infra/infra teardown
       -

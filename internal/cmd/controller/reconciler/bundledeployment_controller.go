@@ -73,9 +73,6 @@ func (r *BundleDeploymentReconciler) Reconcile(ctx context.Context, req ctrl.Req
 	// The bundle reconciler takes care of adding the finalizer when creating a bundle deployment
 	if !bd.DeletionTimestamp.IsZero() {
 		if controllerutil.ContainsFinalizer(bd, finalize.BundleDeploymentFinalizer) {
-			if err := finalize.PurgeContent(ctx, r.Client, bd.Name, bd.Spec.DeploymentID); err != nil {
-				return ctrl.Result{}, err
-			}
 			err = retry.RetryOnConflict(retry.DefaultRetry, func() error {
 				err := r.Get(ctx, req.NamespacedName, bd)
 				if err != nil {
@@ -126,6 +123,9 @@ func (r *BundleDeploymentReconciler) Reconcile(ctx context.Context, req ctrl.Req
 	}
 	if err := r.Status().Patch(ctx, bd, statusPatch); client.IgnoreNotFound(err) != nil {
 		logger.V(1).Info("Reconcile failed update to bundledeployment status, requeuing", "status", bd.Status, "error", err)
+		// Use explicit requeue timing instead of error backoff for predictable retry behavior
+		// Status patch failures are often transient (conflicts) and don't need exponential backoff
+		//nolint:nilerr // Intentionally using fixed requeue interval instead of error backoff
 		return ctrl.Result{RequeueAfter: durations.DefaultRequeueAfter}, nil
 	}
 

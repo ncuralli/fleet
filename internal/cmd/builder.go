@@ -137,11 +137,22 @@ func Command(obj Runnable, cmd cobra.Command) *cobra.Command {
 		for _, env := range env {
 			envs = append(envs, func() {
 				v := os.Getenv(env)
-				if v != "" {
+				if v == "" {
+					return
+				}
+				switch fieldType.Type.Kind() {
+				case reflect.String:
 					fv, err := flags.GetString(name)
 					if err == nil && (fv == "" || fv == defValue) {
 						_ = flags.Set(name, v)
 					}
+				case reflect.Int:
+					fv, err := flags.GetInt(name)
+					if err == nil && fv == defInt {
+						_ = flags.Set(name, v)
+					}
+				default:
+					// unsupported
 				}
 			})
 		}
@@ -203,7 +214,7 @@ func assignSlices(app *cobra.Command, slices map[string]reflect.Value) error {
 			return err
 		}
 		if s != nil {
-			v.Set(reflect.ValueOf(s[:]))
+			v.Set(reflect.ValueOf(s))
 		}
 	}
 	return nil
@@ -217,7 +228,7 @@ func assignArrays(app *cobra.Command, arrays map[string]reflect.Value) error {
 			return err
 		}
 		if s != nil {
-			v.Set(reflect.ValueOf(s[:]))
+			v.Set(reflect.ValueOf(s))
 		}
 	}
 	return nil
